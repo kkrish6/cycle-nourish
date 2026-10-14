@@ -415,12 +415,13 @@ render();
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
 (function(){
-var CFG={apiKey:"AIzaSyCqv4ZQZUQacH6APRnQ5mGir6Jfs3WVo3k",authDomain:"cycle-nourish-sync.firebaseapp.com",projectId:"cycle-nourish-sync",storageBucket:"cycle-nourish-sync.firebasestorage.app",messagingSenderId:"1054633946484",appId:"1:1054633946484:web:bf05a0bc9a98c0776f1021"};
+var CFG={"apiKey": "AIzaSyCqv4ZQZUQacH6APRnQ5mGir6Jfs3WVo3k", "authDomain": "cycle-nourish-sync.firebaseapp.com", "projectId": "cycle-nourish-sync", "storageBucket": "cycle-nourish-sync.firebasestorage.app", "messagingSenderId": "1054633946484", "appId": "1:1054633946484:web:bf05a0bc9a98c0776f1021"};
 var ALLOWED=["bestkkrish@gmail.com","nambusai@gmail.com"];
 var PK="cycle-nourish.pass",CID=Math.random().toString(36).slice(2);
-var st={user:null,pass:localStorage.getItem(PK)||"",key:null,salt:"",ready:false,msg:"",err:"",step:"boot",choice:null,dirty:false,busy:false};
+var BK="cycle-nourish.sync.base",RK="cycle-nourish.recovery",LK="cycle-nourish.v1";
+var st={rev:0,base:null,unsub:null,pushing:false,again:false,pend:null,user:null,pass:localStorage.getItem(PK)||"",key:null,salt:"",ready:false,msg:"",err:"",step:"boot",choice:null,dirty:false,busy:false};
 var gate=document.createElement("div");gate.id="gate";document.body.appendChild(gate);
-var css=document.createElement("style");css.textContent="#gate{position:fixed;inset:0;z-index:100;background:linear-gradient(180deg,#fff3f0,#f3eefa 55%,#eef7f2);display:none;overflow:auto;padding:24px 16px;font-family:system-ui,sans-serif}#gate .card{max-width:380px;margin:8vh auto;background:#fff;border-radius:20px;padding:22px;box-shadow:0 4px 14px rgba(122,59,82,.12)}#gate h2{margin:0 0 6px;color:#7a3b52;font-size:22px}#gate p{color:#4a3f44;line-height:1.5;margin:8px 0}#gate input{width:100%;box-sizing:border-box;padding:12px;margin:6px 0;border:1px solid #efc9d3;border-radius:10px;font-size:16px}#gate button,.syncbtn{width:100%;margin:8px 0 0;padding:12px;border-radius:999px;border:1px solid #e8788f;background:#e8788f;color:#fff;font-size:16px}#gate button.sec,.syncbtn.sec{background:#fff;color:#7a3b52;border-color:#efc9d3}#gate .err{color:#b3261e}.syncbtn{width:auto;padding:8px 16px;font-size:14px}";document.head.appendChild(css);
+var css=document.createElement("style");css.textContent="#gate{position:fixed;inset:0;z-index:100;background:linear-gradient(180deg,#fff3f0,#f3eefa 55%,#eef7f2);display:none;overflow:auto;padding:24px 16px;font-family:system-ui,sans-serif}#gate .card{max-width:380px;margin:8vh auto;background:#fff;border-radius:20px;padding:22px;box-shadow:0 4px 14px rgba(122,59,82,.12)}#gate h2{margin:0 0 6px;color:#7a3b52;font-size:22px}#gate p{color:#4a3f44;line-height:1.5;margin:8px 0}#gate input{width:100%;box-sizing:border-box;padding:12px;margin:6px 0;border:1px solid #efc9d3;border-radius:10px;font-size:16px}#gate button,.syncbtn{width:100%;margin:8px 0 0;padding:12px;border-radius:999px;border:1px solid #e8788f;background:#e8788f;color:#fff;font-size:16px}#gate button.sec,.syncbtn.sec{background:#fff;color:#7a3b52;border-color:#efc9d3}#gate .err{color:#b3261e}#gate button.dng,.syncbtn.dng{background:#fff;color:#b3261e;border-color:#e3a8a4}.syncbtn{width:auto;padding:8px 16px;font-size:14px}";document.head.appendChild(css);
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function b64(buf){var a=new Uint8Array(buf),s="";for(var i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s)}
 function unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
@@ -429,8 +430,38 @@ async function enc(obj){var iv=crypto.getRandomValues(new Uint8Array(12));var ct
 async function dec(d){var k=await derive(st.pass,d.salt);var pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(d.iv)},k,unb64(d.ct));st.key=k;st.salt=d.salt;return JSON.parse(new TextDecoder().decode(pt))}
 firebase.initializeApp(CFG);var auth=firebase.auth(),db=firebase.firestore(),ref=db.collection("cycle").doc("data");
 function app(){return window.CN_APP}
+function clone(o){return JSON.parse(JSON.stringify(o))}
 function hasData(d){return d&&((d.periods&&d.periods.length)||(d.logs&&d.logs.length))}
 function same(a,b){return JSON.stringify(a)===JSON.stringify(b)}
+function lget(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}
+function lset(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+function setBase(d,rev){st.base=clone(d);st.rev=rev||0;lset(BK,{rev:st.rev,data:st.base})}
+/* recovery copies: every copy that gets replaced is kept here so nothing is lost silently */
+function saveRec(label,data){var r=lget(RK)||[];r.unshift({at:new Date().toISOString(),label:label,data:clone(data)});lset(RK,r.slice(0,6))}
+function recs(){return lget(RK)||[]}
+function download(data,name){var blob=new Blob([JSON.stringify({version:1,data:data},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(a.href)},2000)}
+/* three-way merge: base = last synced copy, a = this phone, b = online copy. Edits on both sides are kept; same-record clashes keep this phone's edit and save the other version as a recovery copy */
+function mergeList(base,a,b,key,st2){
+ function idx(l){var m={};(l||[]).forEach(function(x){m[key(x)]=x});return m}
+ var B=idx(base),A=idx(a),R=idx(b),ks={},out=[];
+ Object.keys(B).concat(Object.keys(A),Object.keys(R)).forEach(function(k){ks[k]=1});
+ Object.keys(ks).forEach(function(k){
+  var x=A[k],y=R[k],z=B[k],v;
+  if(x&&y){if(same(x,y))v=x;else if(z&&same(x,z))v=y;else if(z&&same(y,z))v=x;else{v=x;st2.conflicts++}}
+  else if(x){v=(z&&same(x,z))?null:x;if(z&&v)st2.conflicts++}
+  else if(y){v=(z&&same(y,z))?null:y;if(z&&v)st2.conflicts++}
+  if(v)out.push(v)});
+ return out}
+function merge(base,a,b){
+ var s2={conflicts:0},bs=base||{profile:{},periods:[],logs:[]},out=clone(a);
+ var keys={};Object.keys(bs.profile||{}).concat(Object.keys(a.profile||{}),Object.keys(b.profile||{})).forEach(function(k){keys[k]=1});
+ out.profile={};
+ Object.keys(keys).forEach(function(k){var x=a.profile[k],y=b.profile[k],z=(bs.profile||{})[k],v;
+  if(same(x,y))v=x;else if(same(x,z))v=y;else if(same(y,z))v=x;else{v=x;s2.conflicts++}
+  if(v!==undefined)out.profile[k]=v});
+ out.periods=mergeList(bs.periods,a.periods,b.periods,function(p){return p.start},s2).sort(function(p,q){return p.start.localeCompare(q.start)});
+ out.logs=mergeList(bs.logs,a.logs,b.logs,function(l){return l.date},s2).sort(function(p,q){return p.date.localeCompare(q.date)});
+ return{data:out,conflicts:s2.conflicts}}
 function show(html){gate.innerHTML='<div class="card"><h2>\ud83c\udf38 Cycle Nourish</h2>'+html+'</div>';gate.style.display="block"}
 function hide(){gate.style.display="none"}
 function errp(){return st.err?'<p class="err">'+esc(st.err)+'</p>':""}
@@ -438,54 +469,95 @@ function ui(){
  if(st.step==="login"){show('<p>Private. Only two approved accounts can open this.</p><input id="g_email" type="email" autocomplete="username" placeholder="Email" value="'+esc(st.email||"")+'"><input id="g_pw" type="password" autocomplete="current-password" placeholder="Password">'+errp()+(st.msg?'<p>'+esc(st.msg)+'</p>':"")+'<button data-sync="login">Sign in</button><button class="sec" data-sync="reset">Set or reset password (sends email)</button>')}
  else if(st.step==="pass"){show('<p>Signed in as '+esc(st.user.email)+'. Type your secret passphrase. It locks the data before it goes online. It is saved on this phone only.</p><input id="g_pp" type="password" autocomplete="off" placeholder="Passphrase">'+errp()+'<button data-sync="pass">Continue</button><button class="sec" data-sync="signout">Sign out</button>')}
  else if(st.step==="upload"){var d=app().get();show('<p>Nothing is stored online yet. Upload this phone\'s data ('+d.periods.length+' periods, '+d.logs.length+' daily logs)? It becomes the shared copy for all phones. Nothing on this phone is deleted.</p>'+errp()+'<button data-sync="upload">Upload this phone\'s data</button><button class="sec" data-sync="skip">Not now (use online copy later)</button>')}
- else if(st.step==="choose"){var d2=app().get(),c=st.choice;show('<p>This phone and the online copy are different.</p><p>This phone: '+d2.periods.length+' periods, '+d2.logs.length+' logs.<br>Online: '+c.periods.length+' periods, '+c.logs.length+' logs.</p>'+errp()+'<button data-sync="usecloud">Use the online copy</button><button class="sec" data-sync="usephone">Replace online with this phone</button><p>Whichever you do not pick is saved as a backup file option: Settings \u2192 Download backup.</p>')}
+ else if(st.step==="choose"){var d2=app().get(),c=st.choice;show('<p>This phone and the online copy are different.</p><p>This phone: '+d2.periods.length+' periods, '+d2.logs.length+' logs.<br>Online: '+c.periods.length+' periods, '+c.logs.length+' logs.</p>'+errp()+'<button data-sync="usecloud">Use the online copy</button><button class="sec" data-sync="usephone">Replace online with this phone</button><p>The copy you do not pick is kept. Later: Settings \u2192 Privacy \u2192 Recovery copies \u2192 Download.</p>')}
+ else if(st.step==="signout"){show('<p>Signing out stops syncing on this phone. Your records stay on this phone unless you erase them below.</p>'+(st.dirty?'<p class="err">Some changes are not online yet. Stay online a moment first, or download a backup.</p>':"")+errp()+'<button data-sync="signoutkeep">Sign out, keep data on this phone</button><button class="dng" data-sync="signouterase">Sign out and erase this phone\'s data</button><p>Erasing removes records, recovery copies and the saved passphrase from this phone only. The online copy stays.</p><button class="sec" data-sync="cancel">Cancel</button>')}
  else if(st.step==="busy"){show('<p>'+esc(st.msg||"Working...")+'</p>')}
  else hide();
 }
 function set(step,m,e){st.step=step;st.msg=m||"";st.err=e||"";ui()}
+function stop(){if(st.unsub){try{st.unsub()}catch(e){}st.unsub=null}clearTimeout(tm);st.ready=false}
 auth.onAuthStateChanged(function(u){
  if(u&&ALLOWED.indexOf((u.email||"").toLowerCase())<0){auth.signOut();return}
  st.user=u;
- if(!u){st.ready=false;set("login");return}
+ if(!u){stop();set("login");return}
  if(!st.pass){set("pass");return}
  begin();
 });
 async function begin(){
- set("busy","Opening your data...");
+ stop();set("busy","Opening your data...");
  try{
   var snap=await ref.get(),local=app().get();
   if(!snap.exists){
-   if(hasData(local)){st.salt=b64(crypto.getRandomValues(new Uint8Array(16)));st.key=await derive(st.pass,st.salt);set("upload");return}
-   st.salt=b64(crypto.getRandomValues(new Uint8Array(16)));st.key=await derive(st.pass,st.salt);return live();
+   st.rev=0;st.salt=b64(crypto.getRandomValues(new Uint8Array(16)));st.key=await derive(st.pass,st.salt);
+   if(hasData(local)){set("upload");return}
+   setBase(local,0);return live();
   }
   var d=snap.data(),cloud;
   try{cloud=await dec(d)}catch(e){st.pass="";localStorage.removeItem(PK);set("pass","","Wrong passphrase. Try again.");return}
-  if(!hasData(local)||same(local,cloud)){app().set(cloud);return live()}
-  st.choice=cloud;set("choose");
+  var bs=lget(BK);
+  if(!hasData(local)||same(local,cloud)){setBase(cloud,d.rev);app().set(cloud);return live()}
+  if(bs&&bs.data){await reconcile(d,cloud);return live()}
+  st.choice=cloud;st.choiceRev=d.rev||0;set("choose");
  }catch(e){
-  if((e&&e.code==="unavailable")||!navigator.onLine){live(true)}
+  if((e&&e.code==="unavailable")||!navigator.onLine){var b0=lget(BK);if(b0){st.rev=b0.rev;st.base=b0.data}live(true)}
   else set("login","","Could not reach the online copy: "+(e.message||e))
  }
 }
+var tm=null,chain=Promise.resolve();
+function queue(f){chain=chain.then(f,f);return chain}
+/* bring an online version d (already decrypted as remote) together with this phone */
+async function reconcile(d,remote){
+ var local=app().get(),rev=d.rev||0;
+ if(st.base&&rev<=st.rev)return;
+ if(st.base?same(local,st.base):!hasData(local)){setBase(remote,rev);if(!same(local,remote))app().set(remote);st.dirty=false;return}
+ var m=merge(st.base,local,remote);
+ if(m.conflicts>0)saveRec("Other phone's version, "+m.conflicts+" clashing edit(s)",remote);
+ setBase(remote,rev);
+ if(!same(m.data,local))app().set(m.data);
+ if(!same(m.data,remote)){st.dirty=true;st.msg="Combined edits from two phones."}
+}
 function live(offline){
- st.ready=true;set("none");
+ stop();st.ready=true;set("none");
  if(offline){st.msg="Offline. Changes sync when you are back online."}
- ref.onSnapshot(async function(s){
-  if(!s.exists||s.metadata.hasPendingWrites)return;var d=s.data();if(d.by===CID)return;
-  try{var c=await dec(d);if(!same(c,app().get()))app().set(c)}catch(e){}
-  app().render()
+ st.unsub=ref.onSnapshot(function(s){
+  if(!s.exists)return;var d=s.data();if((d.rev||0)<=st.rev)return;
+  if(st.pushing){st.pend=d;return}
+  queue(async function(){try{var r=await dec(d);await reconcile(d,r);app().render();if(st.dirty)push()}catch(e){}});
  },function(){});
  if(st.dirty)push();
 }
-var tm=null;
-function push(){clearTimeout(tm);tm=setTimeout(async function(){
- if(!st.ready||!st.key)return;
- try{await ref.set(await enc(app().get()));st.dirty=false;st.msg="Synced "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}catch(e){st.dirty=true;st.msg="Not synced yet. Will retry."}
- app().render()},700)}
-window.addEventListener("online",function(){if(st.dirty)push()});
+function push(){clearTimeout(tm);tm=setTimeout(function(){queue(pushNow)},700)}
+async function pushNow(){
+ if(!st.ready||!st.key||st.pushing)return;
+ st.pushing=true;
+ try{
+  for(var i=0;i<4;i++){
+   var local=clone(app().get()),mine=st.rev;
+   var res=await db.runTransaction(async function(tx){
+    var s=await tx.get(ref),r=s.exists?(s.data().rev||0):0;
+    if(r!==mine)return{conflict:s.data()};
+    tx.set(ref,Object.assign(await enc(local),{rev:r+1}));return{ok:r+1}});
+   if(res.conflict){
+    var cd=res.conflict,remote;
+    try{remote=await dec(cd)}catch(e){st.msg="Online copy uses a different passphrase. Sign out and use the same one.";st.dirty=true;break}
+    await reconcile(cd,remote);app().render();continue}
+   setBase(local,res.ok);st.dirty=!same(app().get(),local);
+   st.msg=st.dirty?"Saving...":"Synced "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+   if(!st.dirty)break;
+  }
+ }catch(e){st.dirty=true;st.msg="Not synced yet. Will retry."}
+ st.pushing=false;
+ var p=st.pend;st.pend=null;
+ if(p&&(p.rev||0)>st.rev){try{var r2=await dec(p);await reconcile(p,r2)}catch(e){}}
+ if(st.dirty&&navigator.onLine&&/Saving|Combined/.test(st.msg))push();
+ app().render();
+}
+window.addEventListener("online",function(){if(st.dirty&&st.ready)push()});
 window.CN_SYNC={
  push:function(){st.dirty=true;if(st.ready)push()},
- panel:function(){return '<p><b>Synced online, private.</b> Data is locked with your passphrase and only the two approved accounts can open it. '+(st.user?'Signed in as '+esc(st.user.email)+'. ':'')+esc(st.msg)+'</p><button class="syncbtn sec" data-sync="signout">Sign out on this phone</button>'}
+ panel:function(){
+  var r=recs(),rl=r.length?'<p><b>Recovery copies</b> (a copy that was replaced is kept here):</p>'+r.map(function(x,i){return '<button class="syncbtn sec" data-sync="rec'+i+'">Download: '+esc(x.label)+' ('+esc(x.at.slice(0,16).replace("T"," "))+' UTC)</button>'}).join("")+'<p></p>':"";
+  return '<p><b>Synced online, private.</b> Data is locked with your passphrase and only the two approved accounts can open it. '+(st.user?'Signed in as '+esc(st.user.email)+'. ':'')+esc(st.msg)+'</p><p>A readable copy is also kept on this phone so the app works offline. Signing out does not erase it; use the erase option when you sign out on a shared or old phone.</p>'+rl+'<button class="syncbtn sec" data-sync="signout">Sign out on this phone</button>'}
 };
 document.addEventListener("click",async function(e){
  var b=e.target.closest("[data-sync]");if(!b)return;var a=b.getAttribute("data-sync");
@@ -496,11 +568,19 @@ document.addEventListener("click",async function(e){
   if(ALLOWED.indexOf(em2)<0){set("login","","This email is not approved.");return}
   try{await auth.sendPasswordResetEmail(em2)}catch(x){}set("login","Check your email (and spam) for a link to set your password.")}
  else if(a==="pass"){var p=document.getElementById("g_pp").value;if(p.length<8){set("pass","","Use at least 8 characters.");return}st.pass=p;localStorage.setItem(PK,p);begin()}
- else if(a==="upload"){set("busy","Uploading...");try{await ref.set(await enc(app().get()));st.dirty=false;live()}catch(x){set("upload","","Upload failed: "+(x.message||x))}}
+ else if(a==="upload"){set("busy","Uploading...");st.ready=true;try{await pushNow();if(st.dirty)throw new Error("not saved");live()}catch(x){st.ready=false;set("upload","","Upload failed: "+(x.message||x))}}
  else if(a==="skip"){live()}
- else if(a==="usecloud"){try{localStorage.setItem("cycle-nourish.v1.before-cloud",JSON.stringify(app().get()))}catch(x){}app().set(st.choice);live()}
- else if(a==="usephone"){set("busy","Uploading...");try{await ref.set(await enc(app().get()));st.dirty=false;live()}catch(x){set("choose","","Upload failed: "+(x.message||x))}}
- else if(a==="signout"){st.ready=false;st.pass="";localStorage.removeItem(PK);await auth.signOut()}
+ else if(a==="usecloud"){saveRec("This phone's copy before switching to online",app().get());setBase(st.choice,st.choiceRev);app().set(st.choice);live()}
+ else if(a==="usephone"){set("busy","Uploading...");saveRec("Online copy before it was replaced",st.choice);setBase(st.choice,st.choiceRev);st.ready=true;st.dirty=true;try{await pushNow();if(st.dirty)throw new Error("not saved");live()}catch(x){st.ready=false;set("choose","","Upload failed: "+(x.message||x))}}
+ else if(a==="signout"){set("signout")}
+ else if(a==="cancel"){if(st.ready)set("none");else if(st.user)set(st.pass?"none":"pass");else set("login")}
+ else if(a==="signoutkeep"||a==="signouterase"){
+  if(st.ready&&st.dirty&&navigator.onLine){set("busy","Saving last changes...");clearTimeout(tm);try{await queue(pushNow)}catch(x){}}
+  if(st.dirty&&a==="signouterase"&&!window.confirm("Some changes are not online yet and would be lost. Erase anyway?")){set("signout");return}
+  stop();st.pass="";localStorage.removeItem(PK);
+  if(a==="signouterase"){[LK,BK,RK,"cycle-nourish.v1.before-cloud"].forEach(function(k){localStorage.removeItem(k)});try{await auth.signOut()}catch(x){}location.reload();return}
+  await auth.signOut()}
+ else if(/^rec\d+$/.test(a)){var r=recs()[+a.slice(3)];if(r)download(r.data,"cycle-nourish-recovery.json")}
 });
 set("busy","Loading...");
 })();
