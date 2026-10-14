@@ -74,7 +74,7 @@ S.profile=Object.assign({},DEF.profile,S.profile);
 function persist(next,note){
  if(!store.ready)return false;
  if(!valid(next,today)){ui.msg="Please check the dates and values. Data was not saved.";return false}
- try{localStorage.setItem(KEY,JSON.stringify(next));S=next;store.msg="Saved in this browser. Back up important records.";ui.msg=note||"Saved on this device.";return true}
+ try{localStorage.setItem(KEY,JSON.stringify(next));S=next;if(window.CN_SYNC)CN_SYNC.push();store.msg="Saved in this browser. Back up important records.";ui.msg=note||"Saved on this device.";return true}
  catch(e){ui.msg="Could not save. Storage is full or disabled. Download a backup before closing.";return false}
 }
 
@@ -294,7 +294,7 @@ function viewSettings(){
  var pr=S.profile;
  var out=sec("Make it hers",'<p>These words appear in the greeting and poems. They are saved only on this device, never on the public site.</p><label class="field"><span>Her name</span><input type="text" maxlength="40" data-f="name" value="'+esc(pr.name||"")+'" autocomplete="off"></label><label class="field"><span>Sweet words after her name (for example: My love)</span><input type="text" maxlength="40" data-f="pet" value="'+esc(pr.pet||"")+'" autocomplete="off"></label><label class="field"><span>A line of your own, shown on Today (optional, use *stars* around words to highlight them)</span><textarea rows="3" maxlength="400" data-f="note">'+esc(pr.note||"")+'</textarea></label>'+cap("Backups contain this too. Keep them private."));
  out+=sec("Personalise your tracker",'<div class="form-grid"><label class="field"><span>Typical cycle length (21\u201345 days)</span><input type="number" min="21" max="45" data-f="cycle" value="'+pr.cycle+'"></label><label class="field"><span>Typical bleeding length (1\u201310 days)</span><input type="number" min="1" max="10" data-f="bleed" value="'+pr.bleed+'"></label></div>'+cap("Prediction settings, not limits. Once you have two starts, the mean of your latest twelve counted intervals replaces the cycle setting.")+choices("Tracking mode",[["regular","Regular cycles"],["irregular","Irregular cycles"],["hormonal","Hormonal contraception"],["paused","Pregnant / postpartum / paused"]],pr.mode,"mode")+cap("Ovulation dates are hidden outside regular mode or when the last twelve counted intervals vary by more than 9 days. The phase on Today is always shown as a rough estimate unless tracking is paused.")+choices("Food preference",[["vegetarian","Vegetarian"],["vegan","Vegan"],["mixed","Includes egg / meat / fish"]],pr.diet,"diet")+'<div class="check-grid">'+AVOID.map(function(v){return '<label><input type="checkbox" data-f="avoid" value="'+v+'"'+(pr.avoid.indexOf(v)>=0?" checked":"")+'>Exclude '+v+'</label>'}).join("")+'</div>');
- out+=sec("Privacy & backup",'<p>Everything stays in this browser on this phone. Nothing is sent anywhere. Clearing Chrome data erases it, so download a backup now and then and keep it private.</p><div class="actions">'+btn("Download backup","backup",undefined,true)+'<label class="file-button" data-variant="secondary">Restore backup<input class="file-picker" type="file" accept=".json,.txt,application/json,text/plain" data-f="restore"></label></div>'+cap("Restore replaces current records.")+(ui.erase?callout("Erase everything on this device?",'<p>This cannot be undone without a backup.</p><div class="actions">'+btn("Yes, erase everything","erase")+btn("Cancel","eraseNo",undefined,true)+'</div>'):btn("Erase all records\u2026","eraseAsk",undefined,true)));
+ out+=sec("Privacy & backup",''+(window.CN_SYNC?CN_SYNC.panel():'')+'<p>A copy is also kept in this browser, so the app works offline. Download a backup now and then and keep it private.</p><div class="actions">'+btn("Download backup","backup",undefined,true)+'<label class="file-button" data-variant="secondary">Restore backup<input class="file-picker" type="file" accept=".json,.txt,application/json,text/plain" data-f="restore"></label></div>'+cap("Restore replaces current records.")+(ui.erase?callout("Erase everything on this device?",'<p>This cannot be undone without a backup.</p><div class="actions">'+btn("Yes, erase everything","erase")+btn("Cancel","eraseNo",undefined,true)+'</div>'):btn("Erase all records\u2026","eraseAsk",undefined,true)));
  out+=sec("How dates and phases are estimated",'<p>A cycle runs from one period\'s first day to the next. The central estimate is the latest start plus the mean of your latest twelve counted intervals. The range uses the shortest and longest of them. You can leave an unusual gap out in Trends. Ovulation is estimated about 14 days before the next period.</p><p>The phase on Today uses the day count since the last start: menstrual during bleeding, then follicular, a short ovulatory window, then luteal. It cannot measure hormones, so it is a guess, and a rougher one when cycles vary. No "safe days" are given.</p>');
  return out;
 }
@@ -408,6 +408,101 @@ root.addEventListener("change",function(e){
   });
  }
 });
+window.CN_APP={get:function(){return S},set:function(d){S=d;try{localStorage.setItem(KEY,JSON.stringify(d))}catch(e){}render()},render:render};
 render();
 })();
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+(function(){
+var CFG={apiKey:"AIzaSyCqv4ZQZUQacH6APRnQ5mGir6Jfs3WVo3k",authDomain:"cycle-nourish-sync.firebaseapp.com",projectId:"cycle-nourish-sync",storageBucket:"cycle-nourish-sync.firebasestorage.app",messagingSenderId:"1054633946484",appId:"1:1054633946484:web:bf05a0bc9a98c0776f1021"};
+var ALLOWED=["bestkkrish@gmail.com","nambusai@gmail.com"];
+var PK="cycle-nourish.pass",CID=Math.random().toString(36).slice(2);
+var st={user:null,pass:localStorage.getItem(PK)||"",key:null,salt:"",ready:false,msg:"",err:"",step:"boot",choice:null,dirty:false,busy:false};
+var gate=document.createElement("div");gate.id="gate";document.body.appendChild(gate);
+var css=document.createElement("style");css.textContent="#gate{position:fixed;inset:0;z-index:100;background:linear-gradient(180deg,#fff3f0,#f3eefa 55%,#eef7f2);display:none;overflow:auto;padding:24px 16px;font-family:system-ui,sans-serif}#gate .card{max-width:380px;margin:8vh auto;background:#fff;border-radius:20px;padding:22px;box-shadow:0 4px 14px rgba(122,59,82,.12)}#gate h2{margin:0 0 6px;color:#7a3b52;font-size:22px}#gate p{color:#4a3f44;line-height:1.5;margin:8px 0}#gate input{width:100%;box-sizing:border-box;padding:12px;margin:6px 0;border:1px solid #efc9d3;border-radius:10px;font-size:16px}#gate button,.syncbtn{width:100%;margin:8px 0 0;padding:12px;border-radius:999px;border:1px solid #e8788f;background:#e8788f;color:#fff;font-size:16px}#gate button.sec,.syncbtn.sec{background:#fff;color:#7a3b52;border-color:#efc9d3}#gate .err{color:#b3261e}.syncbtn{width:auto;padding:8px 16px;font-size:14px}";document.head.appendChild(css);
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function b64(buf){var a=new Uint8Array(buf),s="";for(var i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s)}
+function unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
+async function derive(pass,saltB64){var km=await crypto.subtle.importKey("raw",new TextEncoder().encode(pass),"PBKDF2",false,["deriveKey"]);return crypto.subtle.deriveKey({name:"PBKDF2",salt:unb64(saltB64),iterations:250000,hash:"SHA-256"},km,{name:"AES-GCM",length:256},false,["encrypt","decrypt"])}
+async function enc(obj){var iv=crypto.getRandomValues(new Uint8Array(12));var ct=await crypto.subtle.encrypt({name:"AES-GCM",iv:iv},st.key,new TextEncoder().encode(JSON.stringify(obj)));return{v:1,salt:st.salt,iv:b64(iv),ct:b64(ct),by:CID,at:firebase.firestore.FieldValue.serverTimestamp()}}
+async function dec(d){var k=await derive(st.pass,d.salt);var pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(d.iv)},k,unb64(d.ct));st.key=k;st.salt=d.salt;return JSON.parse(new TextDecoder().decode(pt))}
+firebase.initializeApp(CFG);var auth=firebase.auth(),db=firebase.firestore(),ref=db.collection("cycle").doc("data");
+function app(){return window.CN_APP}
+function hasData(d){return d&&((d.periods&&d.periods.length)||(d.logs&&d.logs.length))}
+function same(a,b){return JSON.stringify(a)===JSON.stringify(b)}
+function show(html){gate.innerHTML='<div class="card"><h2>\ud83c\udf38 Cycle Nourish</h2>'+html+'</div>';gate.style.display="block"}
+function hide(){gate.style.display="none"}
+function errp(){return st.err?'<p class="err">'+esc(st.err)+'</p>':""}
+function ui(){
+ if(st.step==="login"){show('<p>Private. Only two approved accounts can open this.</p><input id="g_email" type="email" autocomplete="username" placeholder="Email" value="'+esc(st.email||"")+'"><input id="g_pw" type="password" autocomplete="current-password" placeholder="Password">'+errp()+(st.msg?'<p>'+esc(st.msg)+'</p>':"")+'<button data-sync="login">Sign in</button><button class="sec" data-sync="reset">Set or reset password (sends email)</button>')}
+ else if(st.step==="pass"){show('<p>Signed in as '+esc(st.user.email)+'. Type your secret passphrase. It locks the data before it goes online. It is saved on this phone only.</p><input id="g_pp" type="password" autocomplete="off" placeholder="Passphrase">'+errp()+'<button data-sync="pass">Continue</button><button class="sec" data-sync="signout">Sign out</button>')}
+ else if(st.step==="upload"){var d=app().get();show('<p>Nothing is stored online yet. Upload this phone\'s data ('+d.periods.length+' periods, '+d.logs.length+' daily logs)? It becomes the shared copy for all phones. Nothing on this phone is deleted.</p>'+errp()+'<button data-sync="upload">Upload this phone\'s data</button><button class="sec" data-sync="skip">Not now (use online copy later)</button>')}
+ else if(st.step==="choose"){var d2=app().get(),c=st.choice;show('<p>This phone and the online copy are different.</p><p>This phone: '+d2.periods.length+' periods, '+d2.logs.length+' logs.<br>Online: '+c.periods.length+' periods, '+c.logs.length+' logs.</p>'+errp()+'<button data-sync="usecloud">Use the online copy</button><button class="sec" data-sync="usephone">Replace online with this phone</button><p>Whichever you do not pick is saved as a backup file option: Settings \u2192 Download backup.</p>')}
+ else if(st.step==="busy"){show('<p>'+esc(st.msg||"Working...")+'</p>')}
+ else hide();
+}
+function set(step,m,e){st.step=step;st.msg=m||"";st.err=e||"";ui()}
+auth.onAuthStateChanged(function(u){
+ if(u&&ALLOWED.indexOf((u.email||"").toLowerCase())<0){auth.signOut();return}
+ st.user=u;
+ if(!u){st.ready=false;set("login");return}
+ if(!st.pass){set("pass");return}
+ begin();
+});
+async function begin(){
+ set("busy","Opening your data...");
+ try{
+  var snap=await ref.get(),local=app().get();
+  if(!snap.exists){
+   if(hasData(local)){st.salt=b64(crypto.getRandomValues(new Uint8Array(16)));st.key=await derive(st.pass,st.salt);set("upload");return}
+   st.salt=b64(crypto.getRandomValues(new Uint8Array(16)));st.key=await derive(st.pass,st.salt);return live();
+  }
+  var d=snap.data(),cloud;
+  try{cloud=await dec(d)}catch(e){st.pass="";localStorage.removeItem(PK);set("pass","","Wrong passphrase. Try again.");return}
+  if(!hasData(local)||same(local,cloud)){app().set(cloud);return live()}
+  st.choice=cloud;set("choose");
+ }catch(e){
+  if((e&&e.code==="unavailable")||!navigator.onLine){live(true)}
+  else set("login","","Could not reach the online copy: "+(e.message||e))
+ }
+}
+function live(offline){
+ st.ready=true;set("none");
+ if(offline){st.msg="Offline. Changes sync when you are back online."}
+ ref.onSnapshot(async function(s){
+  if(!s.exists||s.metadata.hasPendingWrites)return;var d=s.data();if(d.by===CID)return;
+  try{var c=await dec(d);if(!same(c,app().get()))app().set(c)}catch(e){}
+  app().render()
+ },function(){});
+ if(st.dirty)push();
+}
+var tm=null;
+function push(){clearTimeout(tm);tm=setTimeout(async function(){
+ if(!st.ready||!st.key)return;
+ try{await ref.set(await enc(app().get()));st.dirty=false;st.msg="Synced "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}catch(e){st.dirty=true;st.msg="Not synced yet. Will retry."}
+ app().render()},700)}
+window.addEventListener("online",function(){if(st.dirty)push()});
+window.CN_SYNC={
+ push:function(){st.dirty=true;if(st.ready)push()},
+ panel:function(){return '<p><b>Synced online, private.</b> Data is locked with your passphrase and only the two approved accounts can open it. '+(st.user?'Signed in as '+esc(st.user.email)+'. ':'')+esc(st.msg)+'</p><button class="syncbtn sec" data-sync="signout">Sign out on this phone</button>'}
+};
+document.addEventListener("click",async function(e){
+ var b=e.target.closest("[data-sync]");if(!b)return;var a=b.getAttribute("data-sync");
+ if(a==="login"){var em=document.getElementById("g_email").value.trim().toLowerCase(),pw=document.getElementById("g_pw").value;st.email=em;
+  if(ALLOWED.indexOf(em)<0){set("login","","This email is not approved.");return}
+  try{await auth.signInWithEmailAndPassword(em,pw)}catch(x){set("login","","Sign in failed. Check email and password.")}}
+ else if(a==="reset"){var em2=document.getElementById("g_email").value.trim().toLowerCase();st.email=em2;
+  if(ALLOWED.indexOf(em2)<0){set("login","","This email is not approved.");return}
+  try{await auth.sendPasswordResetEmail(em2)}catch(x){}set("login","Check your email (and spam) for a link to set your password.")}
+ else if(a==="pass"){var p=document.getElementById("g_pp").value;if(p.length<8){set("pass","","Use at least 8 characters.");return}st.pass=p;localStorage.setItem(PK,p);begin()}
+ else if(a==="upload"){set("busy","Uploading...");try{await ref.set(await enc(app().get()));st.dirty=false;live()}catch(x){set("upload","","Upload failed: "+(x.message||x))}}
+ else if(a==="skip"){live()}
+ else if(a==="usecloud"){try{localStorage.setItem("cycle-nourish.v1.before-cloud",JSON.stringify(app().get()))}catch(x){}app().set(st.choice);live()}
+ else if(a==="usephone"){set("busy","Uploading...");try{await ref.set(await enc(app().get()));st.dirty=false;live()}catch(x){set("choose","","Upload failed: "+(x.message||x))}}
+ else if(a==="signout"){st.ready=false;st.pass="";localStorage.removeItem(PK);await auth.signOut()}
+});
+set("busy","Loading...");
+})();
+
 </script></body></html>
